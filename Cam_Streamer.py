@@ -35,11 +35,13 @@ def generate_frames():
     while True:
         frame = picam2.capture_array()
 
-        if recording:
-            with video_lock:
-                if video_writer is not None:
+        with video_lock:
+            if recording and video_writer is not None:
+                try:
                     bgr_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                     video_writer.write(bgr_frame)
+                except Exception as e:
+                    print(f"[ERROR writing frame]: {e}")
 
         _, buffer = cv2.imencode('.jpg', frame)
         frame = buffer.tobytes()
@@ -53,13 +55,13 @@ def video_feed():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
-def on_message(client, userdata, msg):
+def on_message_1(client, userdata, msg):
     global recording, video_writer
 
     payload = msg.payload.decode().strip().lower()
-    print(f"[MQTT]: {payload}")
+    print(f"[MQTT-1 YOLO/result]: {payload}")
 
-    if payload == "is_Person" and not recording:
+    if payload == "is_person" and not recording:
         now = datetime.now().strftime("%Y%m%d_%H%M%S")
         if not os.path.exists("videos"):
             os.makedirs("videos")
@@ -67,35 +69,41 @@ def on_message(client, userdata, msg):
         print(f"[Start Recording] {filename}")
         height, width, _ = picam2.capture_array().shape
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
-        video_writer = cv2.VideoWriter(filename, fourcc, 20.0, (width, height))
-        recording = True
-        
-        time.sleep(10)
-        
-        print("[End Recording]")
-        recording = False
-        if video_writer:
-            video_writer.release()
-            video_writer = None
-    elif payload == "motion_detective" and not recording:
-        filename = "MotionDetective.jpg"
-        # capture
-        
 
-# 🔌 MQTT 클라이언트 스레드 실행
-def mqtt_thread():
+        with video_lock:
+            video_writer = cv2.VideoWriter(filename, fourcc, 20.0, (width, height))
+            recording = True
+
+        time.sleep(10)
+
+        print("[End Recording]")
+        with video_lock:
+            if video_writer:
+                video_writer.release()
+                video_writer = None
+            recording = False 
+
+def on_message_2(client, userdata, msg):
+    payload = msg.payload.decode().strip().lower()
+    print(f"[MQTT-2 Ysensor/motion]: {payload}")
+
+    if payload == "motion_detective":
+        print("Motion Detected!")
+
+def mqtt_thread(broker_ip, topic, on_message_callback):
     client = mqtt.Client()
-    client.on_message = on_message
-    client.connect("localhost", 1883) #change to another IP
-    client.subscribe("sensor/motion")
+    client.on_message = on_message_callback
+    client.connect(broker_ip, 1883, 60)
+    client.subscribe(topic)
     client.loop_forever()
 
-
-# 🟢 메인 실행
 if __name__ == '__main__':
     try:
         initialize_camera()
-        threading.Thread(target=mqtt_thread, daemon=True).start()
+
+        threading.Thread(target=mqtt_thread, args=("223.194.166.217", "YOLO/result", on_message_1), daemon=True).start()
+        threading.Thread(target=mqtt_thread, args=("223.194.166.218", "sensor/motion", on_message_2), daemon=True).start()
+
         app.run(host='0.0.0.0', port=5000, debug=False)
     except KeyboardInterrupt:
         if picam2:
