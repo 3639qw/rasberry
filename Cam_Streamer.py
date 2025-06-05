@@ -55,8 +55,25 @@ def video_feed():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
-def on_message_1(client, userdata, msg):
+def record_video(filename, duration_sec=20):
     global recording, video_writer
+
+    height, width, _ = picam2.capture_array().shape
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    out = cv2.VideoWriter(filename, fourcc, 20.0, (width, height))
+    start_time = time.time()
+
+    while time.time() - start_time < duration_sec:
+        frame = picam2.capture_array()
+        bgr_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        out.write(bgr_frame)
+        time.sleep(1 / 20.0)  # maintain 20fps
+
+    out.release()
+    print(f"[Recording Completed] {filename}")
+
+def on_message_1(client, userdata, msg):
+    global recording
 
     payload = msg.payload.decode().strip().lower()
     print(f"[MQTT-1 YOLO/result]: {payload}")
@@ -66,26 +83,15 @@ def on_message_1(client, userdata, msg):
         if not os.path.exists("videos"):
             os.makedirs("videos")
         filename = f"videos/record_{now}.avi"
+
         print(f"[Start Recording] {filename}")
-        height, width, _ = picam2.capture_array().shape
-        fourcc = cv2.VideoWriter_fourcc(*'XVID')
+        recording = True
+        threading.Thread(target=record_video, args=(filename,), daemon=True).start()
 
-        with video_lock:
-            video_writer = cv2.VideoWriter(filename, fourcc, 20.0, (width, height))
-            recording = True
-
-        time.sleep(10)
-
-        print("[End Recording]")
-        with video_lock:
-            if video_writer:
-                video_writer.release()
-                video_writer = None
-            recording = False 
 
 def on_message_2(client, userdata, msg):
     payload = msg.payload.decode().strip().lower()
-    print(f"[MQTT-2 Ysensor/motion]: {payload}")
+    print(f"[MQTT-2 sensor/motion]: {payload}")
 
     if payload == "motion_detective":
         print("Motion Detected!")
