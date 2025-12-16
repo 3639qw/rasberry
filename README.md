@@ -55,6 +55,7 @@ AI_Security_Camera/
 | 이름      | 이메일                                       | Git                                       |
 |-----------|------------------------------------------|------------------------------------------|
 | 이주용 | 3639qw@gmail.com                                | [Link](https://gitlab.com/3639qw) |
+| 고윤 | yoonnyagn1013@gmail.com                                | [Link](https://gitlab.com/K-yoon03) |
 
 ---
 
